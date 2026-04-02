@@ -11,7 +11,7 @@ import { z } from 'zod';
  * Supported game system identifiers
  * Extend this type when adding new systems
  */
-export type SystemId = 'dnd5e' | 'pf2e' | 'dsa5' | 'other';
+export type SystemId = 'dnd5e' | 'pf2e' | 'dsa5' | 'drawsteel' | 'other';
 
 /**
  * System metadata returned by adapters
@@ -222,6 +222,26 @@ export interface DSA5CreatureIndex extends SystemCreatureIndex {
 }
 
 /**
+ * Draw Steel specific creature index structure
+ */
+export interface DrawSteelCreatureIndex extends SystemCreatureIndex {
+  system: 'drawsteel';
+  systemData: {
+    level?: number;
+    ev?: number;
+    role?: string;
+    organization?: string;
+    keywords?: string[];
+    size?: string;
+    stamina?: number;
+    stability?: number;
+    freeStrike?: number;
+    speed?: number;
+    characteristics?: Record<string, number>;
+  };
+}
+
+/**
  * Generic creature index for unsupported systems
  */
 export interface GenericCreatureIndex extends SystemCreatureIndex {
@@ -232,4 +252,4 @@ export interface GenericCreatureIndex extends SystemCreatureIndex {
 /**
  * Union type of all creature index types
  */
-export type AnyCreatureIndex = DnD5eCreatureIndex | PF2eCreatureIndex | DSA5CreatureIndex | GenericCreatureIndex;
+export type AnyCreatureIndex = DnD5eCreatureIndex | PF2eCreatureIndex | DSA5CreatureIndex | DrawSteelCreatureIndex | GenericCreatureIndex;

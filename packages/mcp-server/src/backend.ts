@@ -34,6 +34,8 @@ import { MapGenerationTools } from './tools/map-generation.js';
 
 import { TokenManipulationTools } from './tools/token-manipulation.js';
 
+import { ItemCreationTools } from './tools/item-creation.js';
+
 import { DSA5CharacterCreator } from './systems/dsa5/character-creator.js';
 
 const CONTROL_HOST = '127.0.0.1';
@@ -1048,11 +1050,13 @@ async function startBackend(): Promise<void> {
   const { DnD5eAdapter } = await import('./systems/dnd5e/adapter.js');
   const { PF2eAdapter } = await import('./systems/pf2e/adapter.js');
   const { DSA5Adapter } = await import('./systems/dsa5/adapter.js');
+  const { DrawSteelAdapter } = await import('./systems/drawsteel/adapter.js');
 
   const systemRegistry = getSystemRegistry(logger);
   systemRegistry.register(new DnD5eAdapter());
   systemRegistry.register(new PF2eAdapter());
   systemRegistry.register(new DSA5Adapter());
+  systemRegistry.register(new DrawSteelAdapter());
 
   logger.info('System registry initialized', {
     supportedSystems: systemRegistry.getSupportedSystems()
@@ -1077,6 +1081,8 @@ async function startBackend(): Promise<void> {
   const ownershipTools = new OwnershipTools({ foundryClient, logger });
 
   const tokenManipulationTools = new TokenManipulationTools({ foundryClient, logger });
+
+  const itemCreationTools = new ItemCreationTools({ foundryClient, logger });
 
   // Initialize mapgen-style backend components for map generation
   let mapGenerationJobQueue: any = null;
@@ -1308,6 +1314,8 @@ async function startBackend(): Promise<void> {
     ...ownershipTools.getToolDefinitions(),
 
     ...tokenManipulationTools.getToolDefinitions(),
+
+    ...itemCreationTools.getToolDefinitions(),
 
     ...mapGenerationTools.getToolDefinitions(),
 
@@ -1600,6 +1608,32 @@ async function startBackend(): Promise<void> {
                 case 'get-available-conditions':
 
                   result = await tokenManipulationTools.handleGetAvailableConditions(args);
+
+                  break;
+
+                // Item creation tools
+
+                case 'create-item':
+
+                  result = await itemCreationTools.handleCreateItem(args);
+
+                  break;
+
+                case 'create-items-batch':
+
+                  result = await itemCreationTools.handleCreateItemsBatch(args);
+
+                  break;
+
+                case 'update-item':
+
+                  result = await itemCreationTools.handleUpdateItem(args);
+
+                  break;
+
+                case 'delete-item':
+
+                  result = await itemCreationTools.handleDeleteItem(args);
 
                   break;
 

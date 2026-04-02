@@ -5747,4 +5747,156 @@ export class FoundryDataAccess {
     }
   }
 
+  // ===== ITEM CREATION / UPDATE / DELETE METHODS =====
+
+  async createItem(data: {
+    actorIdentifier?: string;
+    name: string;
+    type: string;
+    img?: string;
+    system?: Record<string, any>;
+  }): Promise<any> {
+    this.validateFoundryState();
+
+    const permissionCheck = permissionManager.checkWritePermission('createActor');
+    if (!permissionCheck.allowed) {
+      return { error: permissionCheck.reason || 'Write operations not allowed', success: false };
+    }
+
+    const itemData: any = {
+      name: data.name,
+      type: data.type,
+    };
+    if (data.img) itemData.img = data.img;
+    if (data.system) itemData.system = data.system;
+
+    if (data.actorIdentifier) {
+      const actor = this.findActorByIdentifier(data.actorIdentifier);
+      if (!actor) {
+        throw new Error(`Actor not found: ${data.actorIdentifier}`);
+      }
+
+      const created = await actor.createEmbeddedDocuments('Item', [itemData]);
+      if (!created || created.length === 0) {
+        throw new Error('Failed to create embedded item');
+      }
+
+      this.auditLog('createItem', { actorId: actor.id, itemName: data.name, itemType: data.type }, 'success');
+      return { id: created[0].id, name: created[0].name, type: created[0].type, actorName: actor.name, success: true };
+    } else {
+      const created = await Item.create(itemData);
+      if (!created) {
+        throw new Error('Failed to create world item');
+      }
+
+      this.auditLog('createItem', { itemName: data.name, itemType: data.type }, 'success');
+      return { id: created.id, name: created.name, type: created.type, success: true };
+    }
+  }
+
+  async createItemsBatch(data: {
+    actorIdentifier: string;
+    items: Array<{ name: string; type: string; img?: string; system?: Record<string, any> }>;
+  }): Promise<any> {
+    this.validateFoundryState();
+
+    const permissionCheck = permissionManager.checkWritePermission('createActor', {
+      quantity: data.items.length,
+    });
+    if (!permissionCheck.allowed) {
+      return { error: permissionCheck.reason || 'Write operations not allowed', success: false };
+    }
+
+    const actor = this.findActorByIdentifier(data.actorIdentifier);
+    if (!actor) {
+      throw new Error(`Actor not found: ${data.actorIdentifier}`);
+    }
+
+    const itemDataArray = data.items.map(item => {
+      const d: any = { name: item.name, type: item.type };
+      if (item.img) d.img = item.img;
+      if (item.system) d.system = item.system;
+      return d;
+    });
+
+    const created = await actor.createEmbeddedDocuments('Item', itemDataArray);
+    if (!created || created.length === 0) {
+      throw new Error('Failed to create embedded items');
+    }
+
+    this.auditLog('createItemsBatch', { actorId: actor.id, count: created.length }, 'success');
+    return {
+      actorName: actor.name,
+      created: created.map((item: any) => ({ id: item.id, name: item.name, type: item.type })),
+      success: true,
+    };
+  }
+
+  async updateItem(data: {
+    actorIdentifier: string;
+    itemIdentifier: string;
+    updates: { name?: string; img?: string; system?: Record<string, any> };
+  }): Promise<any> {
+    this.validateFoundryState();
+
+    const permissionCheck = permissionManager.checkWritePermission('createActor');
+    if (!permissionCheck.allowed) {
+      return { error: permissionCheck.reason || 'Write operations not allowed', success: false };
+    }
+
+    const actor = this.findActorByIdentifier(data.actorIdentifier);
+    if (!actor) {
+      throw new Error(`Actor not found: ${data.actorIdentifier}`);
+    }
+
+    const item = actor.items.find((i: any) =>
+      i.id === data.itemIdentifier ||
+      i.name.toLowerCase() === data.itemIdentifier.toLowerCase()
+    );
+    if (!item) {
+      throw new Error(`Item "${data.itemIdentifier}" not found on actor "${actor.name}"`);
+    }
+
+    const updateData: any = { _id: item.id };
+    if (data.updates.name) updateData.name = data.updates.name;
+    if (data.updates.img) updateData.img = data.updates.img;
+    if (data.updates.system) updateData.system = data.updates.system;
+
+    await actor.updateEmbeddedDocuments('Item', [updateData]);
+
+    this.auditLog('updateItem', { actorId: actor.id, itemId: item.id, itemName: item.name }, 'success');
+    return { id: item.id, name: data.updates.name || item.name, actorName: actor.name, success: true };
+  }
+
+  async deleteItem(data: {
+    actorIdentifier: string;
+    itemIdentifier: string;
+  }): Promise<any> {
+    this.validateFoundryState();
+
+    const permissionCheck = permissionManager.checkWritePermission('createActor');
+    if (!permissionCheck.allowed) {
+      return { error: permissionCheck.reason || 'Write operations not allowed', success: false };
+    }
+
+    const actor = this.findActorByIdentifier(data.actorIdentifier);
+    if (!actor) {
+      throw new Error(`Actor not found: ${data.actorIdentifier}`);
+    }
+
+    const item = actor.items.find((i: any) =>
+      i.id === data.itemIdentifier ||
+      i.name.toLowerCase() === data.itemIdentifier.toLowerCase()
+    );
+    if (!item) {
+      throw new Error(`Item "${data.itemIdentifier}" not found on actor "${actor.name}"`);
+    }
+
+    const deletedName = item.name;
+    await actor.deleteEmbeddedDocuments('Item', [item.id]);
+
+    this.auditLog('deleteItem', { actorId: actor.id, itemId: item.id, itemName: deletedName }, 'success');
+    return { id: item.id, name: deletedName, actorName: actor.name, success: true };
+  }
+
 }

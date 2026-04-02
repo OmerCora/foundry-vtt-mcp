@@ -98,6 +98,12 @@ export class QueryHandlers {
     // Character search queries
     CONFIG.queries[`${modulePrefix}.searchCharacterItems`] = this.handleSearchCharacterItems.bind(this);
 
+    // Item creation/management queries
+    CONFIG.queries[`${modulePrefix}.createItem`] = this.handleCreateItem.bind(this);
+    CONFIG.queries[`${modulePrefix}.createItemsBatch`] = this.handleCreateItemsBatch.bind(this);
+    CONFIG.queries[`${modulePrefix}.updateItem`] = this.handleUpdateItem.bind(this);
+    CONFIG.queries[`${modulePrefix}.deleteItem`] = this.handleDeleteItem.bind(this);
+
     // Phase 7: Token manipulation queries
     CONFIG.queries[`${modulePrefix}.move-token`] = this.handleMoveToken.bind(this);
     CONFIG.queries[`${modulePrefix}.update-token`] = this.handleUpdateToken.bind(this);
@@ -1357,6 +1363,75 @@ export class QueryHandlers {
       });
     } catch (error) {
       throw new Error(`Failed to search character items: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async handleCreateItem(data: {
+    actorIdentifier?: string;
+    name: string;
+    type: string;
+    img?: string;
+    system?: Record<string, any>;
+  }): Promise<any> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) return { error: 'Access denied', success: false };
+      this.dataAccess.validateFoundryState();
+      if (!data.name) throw new Error('name is required');
+      if (!data.type) throw new Error('type is required');
+      return await this.dataAccess.createItem(data);
+    } catch (error) {
+      throw new Error(`Failed to create item: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async handleCreateItemsBatch(data: {
+    actorIdentifier: string;
+    items: Array<{ name: string; type: string; img?: string; system?: Record<string, any> }>;
+  }): Promise<any> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) return { error: 'Access denied', success: false };
+      this.dataAccess.validateFoundryState();
+      if (!data.actorIdentifier) throw new Error('actorIdentifier is required');
+      if (!data.items || data.items.length === 0) throw new Error('items array is required');
+      return await this.dataAccess.createItemsBatch(data);
+    } catch (error) {
+      throw new Error(`Failed to batch create items: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async handleUpdateItem(data: {
+    actorIdentifier: string;
+    itemIdentifier: string;
+    updates: { name?: string; img?: string; system?: Record<string, any> };
+  }): Promise<any> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) return { error: 'Access denied', success: false };
+      this.dataAccess.validateFoundryState();
+      if (!data.actorIdentifier) throw new Error('actorIdentifier is required');
+      if (!data.itemIdentifier) throw new Error('itemIdentifier is required');
+      if (!data.updates) throw new Error('updates is required');
+      return await this.dataAccess.updateItem(data);
+    } catch (error) {
+      throw new Error(`Failed to update item: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async handleDeleteItem(data: {
+    actorIdentifier: string;
+    itemIdentifier: string;
+  }): Promise<any> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) return { error: 'Access denied', success: false };
+      this.dataAccess.validateFoundryState();
+      if (!data.actorIdentifier) throw new Error('actorIdentifier is required');
+      if (!data.itemIdentifier) throw new Error('itemIdentifier is required');
+      return await this.dataAccess.deleteItem(data);
+    } catch (error) {
+      throw new Error(`Failed to delete item: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

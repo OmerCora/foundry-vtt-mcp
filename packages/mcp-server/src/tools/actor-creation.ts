@@ -103,6 +103,50 @@ export class ActorCreationTools {
           required: ['packId', 'entryId'],
         },
       },
+      {
+        name: 'create-actor',
+        description: 'Create a new actor from scratch with custom data and embedded items. For Draw Steel terrain objects use type "object". Supports nested folder paths using "/" (e.g. "Dynamic Terrain/Mechanisms") — folders are created automatically.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: {
+              type: 'string',
+              description: 'Name of the actor',
+            },
+            type: {
+              type: 'string',
+              description: 'Actor type (e.g. "object", "npc" for Draw Steel)',
+            },
+            img: {
+              type: 'string',
+              description: 'Optional icon path (e.g. "icons/svg/tower.svg")',
+            },
+            system: {
+              type: 'object',
+              description: 'System-specific data. For Draw Steel "object" actors: { ev, stamina: { max, value }, combat: { size: { value, letter, text }, turns }, movement: { value }, object: { level, category, role, area, squareStamina }, damage: { immunities: {...}, weaknesses: {...} } }',
+            },
+            items: {
+              type: 'array',
+              description: 'Embedded items (features/abilities) to create on the actor',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Item name' },
+                  type: { type: 'string', description: 'Item type (e.g. "feature")' },
+                  img: { type: 'string', description: 'Optional icon path' },
+                  system: { type: 'object', description: 'Item system data' },
+                },
+                required: ['name', 'type'],
+              },
+            },
+            folderPath: {
+              type: 'string',
+              description: 'Folder path. Use "/" for nesting (e.g. "Dynamic Terrain/Mechanisms"). Folders are created if they don\'t exist.',
+            },
+          },
+          required: ['name', 'type'],
+        },
+      },
     ];
   }
 
@@ -269,5 +313,42 @@ export class ActorCreationTools {
       },
       message: summary + '\n\n' + details + sceneInfo + errorInfo,
     };
+  }
+
+  /**
+   * Handle creating a new actor from scratch
+   */
+  async handleCreateActor(args: any): Promise<any> {
+    const itemSchema = z.object({
+      name: z.string().min(1),
+      type: z.string().min(1),
+      img: z.string().optional(),
+      system: z.record(z.any()).optional(),
+    });
+
+    const schema = z.object({
+      name: z.string().min(1, 'Name cannot be empty'),
+      type: z.string().min(1, 'Type cannot be empty'),
+      img: z.string().optional(),
+      system: z.record(z.any()).optional(),
+      items: z.array(itemSchema).optional(),
+      folderPath: z.string().optional(),
+    });
+
+    const validated = schema.parse(args);
+    this.logger.info('Creating actor from scratch', { name: validated.name, type: validated.type });
+
+    try {
+      const result = await this.foundryClient.query('foundry-mcp-bridge.createActorCustom', validated);
+      return {
+        success: result.success,
+        id: result.id,
+        name: result.name,
+        type: result.type,
+        message: `✅ Created actor "${result.name}" (${result.type}) with id ${result.id}`,
+      };
+    } catch (error) {
+      this.errorHandler.handleToolError(error, 'create-actor', 'actor creation');
+    }
   }
 }

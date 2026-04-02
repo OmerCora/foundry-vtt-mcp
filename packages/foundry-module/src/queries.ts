@@ -103,6 +103,7 @@ export class QueryHandlers {
     CONFIG.queries[`${modulePrefix}.createItemsBatch`] = this.handleCreateItemsBatch.bind(this);
     CONFIG.queries[`${modulePrefix}.updateItem`] = this.handleUpdateItem.bind(this);
     CONFIG.queries[`${modulePrefix}.deleteItem`] = this.handleDeleteItem.bind(this);
+    CONFIG.queries[`${modulePrefix}.createActorCustom`] = this.handleCreateActorCustom.bind(this);
 
     // Phase 7: Token manipulation queries
     CONFIG.queries[`${modulePrefix}.move-token`] = this.handleMoveToken.bind(this);
@@ -1432,6 +1433,26 @@ export class QueryHandlers {
       return await this.dataAccess.deleteItem(data);
     } catch (error) {
       throw new Error(`Failed to delete item: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async handleCreateActorCustom(data: {
+    name: string;
+    type: string;
+    img?: string;
+    system?: Record<string, any>;
+    items?: Array<{ name: string; type: string; img?: string; system?: Record<string, any> }>;
+    folderPath?: string;
+  }): Promise<any> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) return { error: 'Access denied', success: false };
+      this.dataAccess.validateFoundryState();
+      if (!data.name) throw new Error('name is required');
+      if (!data.type) throw new Error('type is required');
+      return await this.dataAccess.createActorCustom(data);
+    } catch (error) {
+      throw new Error(`Failed to create actor: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

@@ -5899,4 +5899,76 @@ export class FoundryDataAccess {
     return { id: item.id, name: deletedName, actorName: actor.name, success: true };
   }
 
+  async createActorCustom(data: {
+    name: string;
+    type: string;
+    img?: string;
+    system?: Record<string, any>;
+    items?: Array<{ name: string; type: string; img?: string; system?: Record<string, any> }>;
+    folderPath?: string;
+  }): Promise<any> {
+    this.validateFoundryState();
+
+    const permissionCheck = permissionManager.checkWritePermission('createActor');
+    if (!permissionCheck.allowed) {
+      return { error: permissionCheck.reason || 'Write operations not allowed', success: false };
+    }
+
+    let folderId: string | null = null;
+    if (data.folderPath) {
+      folderId = await this.getOrCreateNestedFolder(data.folderPath, 'Actor');
+    }
+
+    const actorData: any = {
+      name: data.name,
+      type: data.type,
+    };
+    if (data.img) actorData.img = data.img;
+    if (data.system) actorData.system = data.system;
+    if (data.items && data.items.length > 0) actorData.items = data.items;
+    if (folderId) actorData.folder = folderId;
+
+    const created = await Actor.create(actorData);
+    if (!created) {
+      throw new Error(`Failed to create actor "${data.name}"`);
+    }
+
+    this.auditLog('createActorCustom', { name: data.name, type: data.type }, 'success');
+    return { id: created.id, name: created.name, type: created.type, success: true };
+  }
+
+  private async getOrCreateNestedFolder(folderPath: string, type: 'Actor' | 'JournalEntry'): Promise<string | null> {
+    const parts = folderPath.split('/').map((p: string) => p.trim()).filter(Boolean);
+    if (parts.length === 0) return null;
+    if (parts.length === 1) return this.getOrCreateFolder(parts[0], type);
+
+    try {
+      let parentId: string | null = null;
+      for (const part of parts) {
+        const existingFolder = game.folders?.find((f: any) =>
+          f.name === part && f.type === type && (f.folder?.id ?? null) === parentId
+        );
+
+        if (existingFolder) {
+          parentId = existingFolder.id;
+        } else {
+          const folderData: any = {
+            name: part,
+            type: type,
+            folder: parentId,
+            sort: 0,
+            flags: { 'foundry-mcp-bridge': { mcpGenerated: true } }
+          };
+          const folder = await Folder.create(folderData);
+          if (!folder) throw new Error(`Failed to create folder "${part}"`);
+          parentId = folder.id;
+        }
+      }
+      return parentId;
+    } catch (error) {
+      console.warn(`[${this.moduleId}] Failed to create nested folder "${folderPath}":`, error);
+      return null;
+    }
+  }
+
 }

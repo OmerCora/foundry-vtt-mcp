@@ -1491,6 +1491,12 @@ async function startBackend(): Promise<void> {
 
                   break;
 
+                case 'create-actor':
+
+                  result = await actorCreationTools.handleCreateActor(args);
+
+                  break;
+
                 // DSA5 character creation tools
 
                 case 'create-dsa5-character-from-archetype':

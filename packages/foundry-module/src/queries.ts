@@ -1442,6 +1442,7 @@ export class QueryHandlers {
     img?: string;
     system?: Record<string, any>;
     items?: Array<{ name: string; type: string; img?: string; system?: Record<string, any> }>;
+    effects?: Array<Record<string, any>>;
     folderPath?: string;
   }): Promise<any> {
     try {

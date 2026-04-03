@@ -139,6 +139,21 @@ export class ActorCreationTools {
                 required: ['name', 'type'],
               },
             },
+            effects: {
+              type: 'array',
+              description: 'Active Effects to create on the actor',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  img: { type: 'string' },
+                  disabled: { type: 'boolean', description: 'True = effect is inactive by default' },
+                  changes: { type: 'array', items: { type: 'object' } },
+                  description: { type: 'string', description: 'HTML description of the effect' },
+                },
+                required: ['name'],
+              },
+            },
             folderPath: {
               type: 'string',
               description: 'Folder path. Use "/" for nesting (e.g. "Dynamic Terrain/Mechanisms"). Folders are created if they don\'t exist.',
@@ -332,6 +347,7 @@ export class ActorCreationTools {
       img: z.string().optional(),
       system: z.record(z.any()).optional(),
       items: z.array(itemSchema).optional(),
+      effects: z.array(z.record(z.any())).optional(),
       folderPath: z.string().optional(),
     });
 

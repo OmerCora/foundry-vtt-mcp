@@ -5905,6 +5905,7 @@ export class FoundryDataAccess {
     img?: string;
     system?: Record<string, any>;
     items?: Array<{ name: string; type: string; img?: string; system?: Record<string, any> }>;
+    effects?: Array<Record<string, any>>;
     folderPath?: string;
   }): Promise<any> {
     this.validateFoundryState();
@@ -5926,6 +5927,7 @@ export class FoundryDataAccess {
     if (data.img) actorData.img = data.img;
     if (data.system) actorData.system = data.system;
     if (data.items && data.items.length > 0) actorData.items = data.items;
+    if (data.effects && data.effects.length > 0) actorData.effects = data.effects;
     if (folderId) actorData.folder = folderId;
 
     const created = await Actor.create(actorData);

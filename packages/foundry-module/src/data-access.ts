@@ -114,8 +114,27 @@ interface PF2eCreatureIndex {
   img?: string;
 }
 
-// Union type for both systems
-type EnhancedCreatureIndex = DnD5eCreatureIndex | PF2eCreatureIndex;
+// Draw Steel Enhanced Creature Index
+interface DrawSteelCreatureIndex {
+  id: string;
+  name: string;
+  type: string;             // 'npc' or 'object'
+  pack: string;
+  packLabel: string;
+  level: number;            // Draw Steel encounter level (from system.level or role)
+  role: string;             // Draw Steel role: 'minion', 'grunt', 'elite', 'leader', 'solo', 'boss', etc.
+  creatureType: string;     // Creature type/ancestry descriptor
+  size: string;
+  hitPoints: number;
+  armorClass: number;
+  hasSpells: boolean;
+  alignment: string;
+  description?: string;
+  img?: string;
+}
+
+// Union type for all systems
+type EnhancedCreatureIndex = DnD5eCreatureIndex | PF2eCreatureIndex | DrawSteelCreatureIndex;
 
 interface PersistentIndexMetadata {
   version: string;
@@ -554,8 +573,10 @@ class PersistentCreatureIndex {
       return await this.buildPF2eIndex(force);
     } else if (gameSystem === 'dnd5e') {
       return await this.buildDnD5eIndex(force);
+    } else if (gameSystem === 'draw-steel') {
+      return await this.buildDrawSteelIndex(force);
     } else {
-      throw new Error(`Enhanced creature index not supported for system: ${gameSystem}. Only D&D 5e and Pathfinder 2e are currently supported.`);
+      throw new Error(`Enhanced creature index not supported for system: ${gameSystem}. Only D&D 5e, Pathfinder 2e, and Draw Steel are currently supported.`);
     }
   }
 
@@ -867,6 +888,157 @@ class PersistentCreatureIndex {
           alignment: 'unaligned',
           description: 'Data extraction failed',
           img: doc.img || ''
+        },
+        errors: 1
+      };
+    }
+  }
+
+  /**
+   * Build Draw Steel enhanced creature index
+   */
+  private async buildDrawSteelIndex(_force = false): Promise<DrawSteelCreatureIndex[]> {
+    this.buildInProgress = true;
+    const startTime = Date.now();
+    let progressNotification: any = null;
+    let totalErrors = 0;
+
+    try {
+      const actorPacks = Array.from(game.packs.values()).filter(pack => pack.metadata.type === 'Actor');
+      const enhancedCreatures: DrawSteelCreatureIndex[] = [];
+      const packFingerprints = new Map<string, PackFingerprint>();
+
+      ui.notifications?.info(`Starting Draw Steel creature index build from ${actorPacks.length} packs...`);
+
+      for (let i = 0; i < actorPacks.length; i++) {
+        const pack = actorPacks[i];
+        if (progressNotification) progressNotification.remove();
+        progressNotification = ui.notifications?.info(
+          `Building Draw Steel index: Pack ${i + 1}/${actorPacks.length} (${pack.metadata.label})...`
+        );
+
+        packFingerprints.set(pack.metadata.id, await this.generatePackFingerprint(pack));
+
+        const result = await this.extractDrawSteelDataFromPack(pack);
+        enhancedCreatures.push(...result.creatures);
+        totalErrors += result.errors;
+      }
+
+      if (progressNotification) progressNotification.remove();
+      ui.notifications?.info(`Saving Draw Steel index... (${enhancedCreatures.length} creatures)`);
+
+      const persistentIndex: PersistentEnhancedIndex = {
+        metadata: {
+          version: this.INDEX_VERSION,
+          timestamp: Date.now(),
+          packFingerprints,
+          totalCreatures: enhancedCreatures.length,
+          gameSystem: 'draw-steel'
+        },
+        creatures: enhancedCreatures
+      };
+
+      await this.savePersistedIndex(persistentIndex);
+
+      const buildTimeSeconds = Math.round((Date.now() - startTime) / 1000);
+      const errorText = totalErrors > 0 ? ` (${totalErrors} extraction errors)` : '';
+      ui.notifications?.info(`Draw Steel creature index complete! ${enhancedCreatures.length} creatures indexed in ${buildTimeSeconds}s${errorText}`);
+
+      return enhancedCreatures;
+
+    } catch (error) {
+      if (progressNotification) progressNotification.remove();
+      const msg = `Failed to build Draw Steel creature index: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      console.error(`[${this.moduleId}] ${msg}`);
+      ui.notifications?.error(msg);
+      throw error;
+    } finally {
+      this.buildInProgress = false;
+      if (progressNotification) progressNotification.remove();
+    }
+  }
+
+  private async extractDrawSteelDataFromPack(pack: any): Promise<{ creatures: DrawSteelCreatureIndex[], errors: number }> {
+    const creatures: DrawSteelCreatureIndex[] = [];
+    let errors = 0;
+    try {
+      const documents = await pack.getDocuments();
+      for (const doc of documents) {
+        try {
+          if (doc.type !== 'npc' && doc.type !== 'object') continue;
+          const result = this.extractDrawSteelCreatureData(doc, pack);
+          if (result) { creatures.push(result.creature); errors += result.errors; }
+        } catch (error) {
+          console.warn(`[${this.moduleId}] Failed to extract Draw Steel data from ${doc.name}:`, error);
+          errors++;
+        }
+      }
+    } catch (error) {
+      console.warn(`[${this.moduleId}] Failed to load documents from ${pack.metadata.label}:`, error);
+      errors++;
+    }
+    return { creatures, errors };
+  }
+
+  private extractDrawSteelCreatureData(doc: any, pack: any): { creature: DrawSteelCreatureIndex, errors: number } | null {
+    try {
+      const system = doc.system || {};
+
+      // Draw Steel level: npc system uses system.level or infer from encounter role
+      const level = Number(system.level ?? system.cr ?? 0) || 0;
+
+      // Role: minion, grunt, elite, leader, solo, boss
+      const role = (system.role?.value ?? system.role ?? system.npcType ?? 'grunt').toString().toLowerCase();
+
+      // Creature type / ancestry
+      const creatureType = (system.type?.value ?? system.creatureType ?? system.ancestry ?? 'unknown').toString().toLowerCase();
+
+      // Size
+      const size = (system.size?.value ?? system.size ?? 'medium').toString().toLowerCase();
+
+      // Stamina (HP equivalent)
+      const hitPoints = Number(system.stamina?.max ?? system.stamina?.value ?? system.hp?.max ?? system.hp?.value ?? 0) || 0;
+
+      // Armor (Defense equivalent)
+      const armorClass = Number(system.armor?.value ?? system.armorValue ?? system.defense ?? system.ac?.value ?? 10) || 10;
+
+      // Detect abilities that use magic/psionic keywords as proxy for "spells"
+      const hasSpells = doc.items?.some((i: any) =>
+        i.type === 'ability' &&
+        (i.system?.keywords?.magic || i.system?.keywords?.psionic)
+      ) ?? false;
+
+      const alignment = 'unaligned';
+
+      return {
+        creature: {
+          id: doc._id,
+          name: doc.name,
+          type: doc.type,
+          pack: pack.metadata.id,
+          packLabel: pack.metadata.label,
+          level,
+          role,
+          creatureType,
+          size,
+          hitPoints,
+          armorClass,
+          hasSpells,
+          alignment,
+          description: system.biography?.value ?? system.description?.value ?? '',
+          img: doc.img
+        },
+        errors: 0
+      };
+    } catch (error) {
+      console.warn(`[${this.moduleId}] Failed to extract Draw Steel data from ${doc.name}:`, error);
+      return {
+        creature: {
+          id: doc._id, name: doc.name, type: doc.type,
+          pack: pack.metadata.id, packLabel: pack.metadata.label,
+          level: 0, role: 'grunt', creatureType: 'unknown', size: 'medium',
+          hitPoints: 0, armorClass: 10, hasSpells: false, alignment: 'unaligned',
+          description: 'Data extraction failed', img: doc.img || ''
         },
         errors: 1
       };
@@ -2368,9 +2540,9 @@ export class FoundryDataAccess {
 
       // Sort by Level/CR then name for consistent ordering (system-aware)
       filteredCreatures.sort((a, b) => {
-        // Get power level (CR for D&D 5e, Level for PF2e)
-        const powerA = 'level' in a ? (a as PF2eCreatureIndex).level : (a as DnD5eCreatureIndex).challengeRating;
-        const powerB = 'level' in b ? (b as PF2eCreatureIndex).level : (b as DnD5eCreatureIndex).challengeRating;
+        // Get power level (CR for D&D 5e, Level for PF2e/Draw Steel)
+        const powerA = 'challengeRating' in a ? (a as DnD5eCreatureIndex).challengeRating : (a as PF2eCreatureIndex | DrawSteelCreatureIndex).level;
+        const powerB = 'challengeRating' in b ? (b as DnD5eCreatureIndex).challengeRating : (b as PF2eCreatureIndex | DrawSteelCreatureIndex).level;
 
         if (powerA !== powerB) {
           return powerA - powerB; // Lower power first
@@ -2385,9 +2557,6 @@ export class FoundryDataAccess {
 
       // Convert enhanced creatures to result format (system-aware)
       const results = filteredCreatures.map(creature => {
-        // Type guard for result formatting
-        const isPF2e = 'level' in creature;
-
         return {
           id: creature.id,
           name: creature.name,
@@ -2398,12 +2567,17 @@ export class FoundryDataAccess {
           hasImage: !!creature.img,
 
           // System-aware summary
-          summary: isPF2e
-            ? `Level ${(creature as PF2eCreatureIndex).level} ${creature.creatureType} (${(creature as PF2eCreatureIndex).rarity}) from ${creature.packLabel}`
-            : `CR ${(creature as DnD5eCreatureIndex).challengeRating} ${creature.creatureType} from ${creature.packLabel}`,
+          summary: 'role' in creature
+            ? `Level ${(creature as DrawSteelCreatureIndex).level} ${(creature as DrawSteelCreatureIndex).role} ${creature.creatureType} from ${creature.packLabel}`
+            : ('rarity' in creature
+              ? `Level ${(creature as PF2eCreatureIndex).level} ${creature.creatureType} (${(creature as PF2eCreatureIndex).rarity}) from ${creature.packLabel}`
+              : `CR ${(creature as DnD5eCreatureIndex).challengeRating} ${creature.creatureType} from ${creature.packLabel}`),
 
           // Include all creature data (conditional based on system)
-          ...(isPF2e ? {
+          ...('role' in creature ? {
+            level: (creature as DrawSteelCreatureIndex).level,
+            role: (creature as DrawSteelCreatureIndex).role
+          } : 'rarity' in creature ? {
             level: (creature as PF2eCreatureIndex).level,
             traits: (creature as PF2eCreatureIndex).traits,
             rarity: (creature as PF2eCreatureIndex).rarity
@@ -2469,12 +2643,37 @@ export class FoundryDataAccess {
    * Check if enhanced creature passes all specified criteria (system-aware routing)
    */
   private passesEnhancedCriteria(creature: EnhancedCreatureIndex, criteria: any): boolean {
-    // Type guard for PF2e creatures - check for level property
-    if ('level' in creature) {
-      return this.passesPF2eCriteria(creature as PF2eCreatureIndex, criteria);
-    } else {
-      return this.passesDnD5eCriteria(creature as DnD5eCreatureIndex, criteria);
+    // Draw Steel: has 'role' property
+    if ('role' in creature) {
+      return this.passesDrawSteelCriteria(creature as DrawSteelCreatureIndex, criteria);
     }
+    // PF2e: has 'level' but not 'challengeRating'
+    if ('level' in creature && !('challengeRating' in creature)) {
+      return this.passesPF2eCriteria(creature as PF2eCreatureIndex, criteria);
+    }
+    return this.passesDnD5eCriteria(creature as DnD5eCreatureIndex, criteria);
+  }
+
+  private passesDrawSteelCriteria(creature: DrawSteelCreatureIndex, criteria: {
+    challengeRating?: number | { min?: number; max?: number };  // maps to level
+    creatureType?: string;
+    size?: string;
+    hasSpells?: boolean;
+  }): boolean {
+    // challengeRating filter maps to Draw Steel level
+    if (criteria.challengeRating !== undefined) {
+      if (typeof criteria.challengeRating === 'number') {
+        if (creature.level !== criteria.challengeRating) return false;
+      } else {
+        const { min, max } = criteria.challengeRating;
+        if (min !== undefined && creature.level < min) return false;
+        if (max !== undefined && creature.level > max) return false;
+      }
+    }
+    if (criteria.creatureType && creature.creatureType.toLowerCase() !== criteria.creatureType.toLowerCase()) return false;
+    if (criteria.size && creature.size.toLowerCase() !== criteria.size.toLowerCase()) return false;
+    if (criteria.hasSpells !== undefined && creature.hasSpells !== criteria.hasSpells) return false;
+    return true;
   }
 
   /**
